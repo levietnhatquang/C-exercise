@@ -12,21 +12,20 @@
 #define OUTPUT 				(MEM_SIZE - S * K)
 #define NUM_S_STILL_FIT 	(int)floor((MEM_SIZE - (K + 1) * S) / S)
 #define LEFT_OVER 			(MEM_SIZE - (K + 1 + NUM_S_STILL_FIT) * S)
-//#define MEM_SIZE_EXTRA (S * K - MEM_SIZE) //40
 
 typedef int data_t;
 
-//data_t *D; // Data (slow memory)
-data_t *M; // Memory (fast memory)
-//data_t *T; // Data tmp (slow memory)
+data_t *M; 
 
-int GenData();		//
-void Load(int idx);	//
-int Fill(int idx);	//
+void *pThreadSortingPhase(int idx)
+
+int GenData();
+void Load(int idx);
+int Fill(int idx);
 int FillLeftOver(int idx);
-void Sort();		//
-void Save(int idx);	//
-void Store();		//
+void Sort();
+void Save(int idx);
+void Store();
 int LinearScan();
 void KwayMerge();
 int test();
@@ -150,6 +149,13 @@ int main(){
 	remove("Data-tmp.dat");
 	//test();
 	return 0;
+}
+
+void *pThreadSortingPhase(int idx)
+{
+	Load(i);
+	Sort();
+	Save(i);
 }
 
 void Load(int idx)
