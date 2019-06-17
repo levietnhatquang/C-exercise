@@ -1,45 +1,31 @@
-#include<stdio.h>
-#include<stdlib.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "MinHeap.h"
 /*
  Array Implementation of MinHeap data Structure
 */
 
 int HEAP_SIZE = 20;
 
-struct Heap{
-    int *arr;
-    int count;
-    int capacity;
-    int heap_type; // 0 for min heap , 1 for max heap
-};
-typedef struct Heap Heap;
+// int main(){
+//     int i;
+//     Heap *heap = CreateHeap(HEAP_SIZE, 0); //Min Heap
+//     if (heap == NULL){
+//         printf("CreateHeap() failed.\n");
+//         return -1;
+//     }
 
-Heap *CreateHeap(int capacity,int heap_type);
-void insert(Heap *h, int key);
-void print(Heap *h);
-void heapify_bottom_top(Heap *h,int index);
-void heapify_top_bottom(Heap *h, int parent_node);
-int PopMin(Heap *h);
+//     for (i = 20; i > 0; i--)
+//         insert(heap, i);
 
-int main(){
-    int i;
-    Heap *heap = CreateHeap(HEAP_SIZE, 0); //Min Heap
-    if (heap == NULL){
-        printf("CreateHeap() failed.\n");
-        return -1;
-    }
+//     print(heap);
 
-    for (i = 9; i > 0; i--)
-        insert(heap, i);
-
-    print(heap);
-
-    for (i = 9; i >= 0; i--){
-        printf(" Pop Minima : %d\n", PopMin(heap));
-        print(heap);
-    }
-    return 0;
-}
+//     for (i = 20; i > 0; i--){
+//         printf(" Pop Minima : %d\n", PopMin(heap));
+//         print(heap);
+//     }
+//     return 0;
+// }
 
 Heap *CreateHeap(int capacity,int heap_type){
     Heap *h = (Heap * ) malloc(sizeof(Heap)); //one is number of heap
@@ -114,7 +100,7 @@ void heapify_top_bottom(Heap *h, int parent_node){
 int PopMin(Heap *h){
     int pop;
     if(h->count==0){
-        printf("\n__Heap is Empty__\n");
+        printf("_Empty_");
         return -1;
     }
     // replace first node by last and delete last
