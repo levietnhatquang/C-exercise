@@ -12,6 +12,8 @@
 #define OUTPUT 				(MEM_SIZE - S * K)
 #define NUM_S_STILL_FIT 	(int)floor((MEM_SIZE - (K + 1) * S) / S)
 #define LEFT_OVER 			(MEM_SIZE - (K + 1 + NUM_S_STILL_FIT) * S)
+#define RAN_LOWER			13
+#define RAN_UPPER			26
 
 typedef int data_t;
 
@@ -26,7 +28,8 @@ void Save(int idx);
 void Store();
 int LinearScan();
 void KwayMerge();
-int test();
+int prin();
+int check(int pri);
 
 int isTmpLineEmptyHasLeftOver(int idx);
 int isMemLineEmpty(int idx);
@@ -38,7 +41,11 @@ int *M_Lscan_idx_list = NULL;
 
 
 int main(){
-	if (access("Data.dat", F_OK) != -1) {
+	remove("Data-1.dat");
+	remove("Data-tmp-1.dat");
+	remove("Data-sorted-1.dat");
+
+	if (access("Data-1.dat", F_OK) != -1) {
 	    printf("Data existed. Skip generating data.\n");
 	} 
 	else{
@@ -52,8 +59,8 @@ int main(){
 		}
 	}
 
-	if (access("Data-sorted.dat", F_OK) != -1)
-	    remove("Data-sorted.dat");
+	if (access("Data-sorted-1.dat", F_OK) != -1)
+	    remove("Data-sorted-1.dat");
 
 	M = (data_t *)malloc(MEM_SIZE * sizeof(data_t));
 	T_Fill_idx_list = (int *)calloc(K, sizeof(int));
@@ -72,26 +79,27 @@ int main(){
 		printf("%d/%d\n", i + 1, K);
 	}
 
-	for (int i = 0; i < K; i++){
+	for (int i = 0; i < K; i++)
 		Fill(i);
-	}
 
 	printf("Start merging phase...\n");
 	KwayMerge();
 
 	free(M);
-	remove("Data-tmp.dat");
+	remove("Data-tmp-1.dat");
+	check(0);
+	printf("\n");
+	prin();
 	return 0;
 }
 
 void Load(int idx)
 {
-	const char filename[] = "Data.dat";
+	const char filename[] = "Data-1.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error reading from  %s\n",filename);
         exit(EXIT_FAILURE);
     }
@@ -115,12 +123,11 @@ int Fill(int idx)
 		return 1;
 	}
 
-	const char filename[] = "Data-tmp.dat";
+	const char filename[] = "Data-tmp-1.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error reading from  %s\n",filename);
         exit(EXIT_FAILURE);
     }
@@ -139,19 +146,18 @@ int Fill(int idx)
 }
 int FillLeftOver(int idx)
 {
-	const char filename[] = "Data-tmp.dat";
+	const char filename[] = "Data-tmp-1.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error reading from  %s\n",filename);
         exit(EXIT_FAILURE);
     }
 
 	fseek(hs, (idx * MEM_SIZE + *(T_Fill_idx_list + idx) * S) * 4, SEEK_SET);
-    int res = fread(M + idx * S, sizeof(int), 1, hs);
-	if (res != 1){
+    int res = fread(M + idx * S + S - LEFT_OVER, sizeof(int), LEFT_OVER, hs);
+	if (res != LEFT_OVER){
 		fputs("FillLeftOver().Reading error",stderr);
 		exit(EXIT_FAILURE);
 	}
@@ -170,13 +176,12 @@ void Sort()
 
 void Save(int idx)
 {
-	const char filename[] = "Data-tmp.dat";
+	const char filename[] = "Data-tmp-1.dat";
     int a;
     FILE *hs;
 
     hs = fopen(filename,"a");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error writing to %s\n",filename);
         exit(EXIT_FAILURE);
     }
@@ -187,13 +192,12 @@ void Save(int idx)
 int St_idx = 0;
 void Store()
 {
-	const char filename[] = "Data-sorted.dat";
+	const char filename[] = "Data-sorted-1.dat";
     int a;
     FILE *hs;
 
     hs = fopen(filename,"a");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error writing to %s\n",filename);
         exit(EXIT_FAILURE);
     }
@@ -228,10 +232,13 @@ int LinearScan()
 
 void KwayMerge()
 {
-	int N = (int)DATA_SIZE / OUTPUT;
+	int N = (int)floor(DATA_SIZE / OUTPUT);
 	int n = N;
 	int i = 0;
 	int j = 1;
+	// printf("_%d_ _%d_\n", N, OUTPUT);
+	int left_over = DATA_SIZE - N * OUTPUT;
+	// printf("%d\n", left_over);
 	while (n-- > 0){
 		for (int i = 0; i < OUTPUT; i++)
 			M[MEM_SIZE - OUTPUT + i] = LinearScan();
@@ -239,6 +246,9 @@ void KwayMerge()
 		if ((int)((i++ + 1) % (N / 10)) == 0)
 			printf("%d%s\n", j++ * 10, "%");
 	}
+	for (int i = 0; i < left_over; i++)
+		M[MEM_SIZE - OUTPUT + i] = LinearScan();
+	Store();
 }
 
 int isMemLineEmpty(int idx)
@@ -275,22 +285,96 @@ int isTmpEmpty(int idx){
 
 int GenData()
 {
-	const char filename[] = "Data.dat";
+	const char filename[] = "Data-1.dat";
     int a;
     FILE *hs;
 
     printf("Generating 8GB of random data...\n");
     hs = fopen(filename,"w");
-    if( hs == NULL)
-    {
+    if( hs == NULL){
         fprintf(stderr,"Error writing to %s\n",filename);
         return(1);
     }
 	for (int l = 0; l < DATA_SIZE; l++){
-			a = rand() % (9 - 1 + 1) + 1;
+		a = rand() % (RAN_UPPER - RAN_LOWER + 1) + RAN_LOWER;
 		fwrite(&a, sizeof(int), 1, hs);
 		}
     fclose(hs);
     
+    return 0;
+}
+
+int prin()
+{
+	int D[RAN_UPPER - RAN_LOWER + 1];
+	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		D[j] = 0;
+	const char filename[] = "Data-1.dat";
+    int a;
+    FILE *hs;
+    hs = fopen(filename,"r");
+    if( hs == NULL){
+        fprintf(stderr,"Error reading from  %s\n",filename);
+        return(1);
+    }
+
+    for (int i = 0; i < DATA_SIZE; i++){
+        fread(&a, sizeof(int), 1, hs);
+        for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        	if (a == j + RAN_LOWER){
+    			D[j]++;
+    			break;
+    		}
+    }
+    for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		printf("%d - %d\n", j, D[j]);
+
+    fclose(hs);
+    return 0;
+}
+
+int check(int pri)
+{
+	int D[RAN_UPPER - RAN_LOWER + 1];
+	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		D[j] = 0;
+	const char filename[] = "Data-sorted-1.dat";
+    int a;
+    FILE *hs;
+    hs = fopen(filename,"r");
+    if( hs == NULL)
+    {
+        fprintf(stderr,"Error reading from  %s\n",filename);
+        return(1);
+    }
+
+    if (pri == 1){
+    	for (int i = 0; i < DATA_SIZE; i++){
+        	fread(&a, sizeof(int), 1, hs);
+        	printf("%d ",a);
+        	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        		if (a == j + RAN_LOWER){
+        			D[j]++;
+        			break;
+        		}
+    	}
+    }
+    else{
+    	for (int i = 0; i < DATA_SIZE; i++){
+        	fread(&a, sizeof(int), 1, hs);
+        	//printf("%d ",a);
+        	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        		if (a == j + RAN_LOWER){
+        			D[j]++;
+        			break;
+        		}
+    	}
+    }
+    
+    printf("\n");
+    for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		printf("%d - %d\n", j, D[j]);
+
+    fclose(hs);
     return 0;
 }

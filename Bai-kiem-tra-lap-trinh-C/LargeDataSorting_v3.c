@@ -4,20 +4,28 @@
 #include <unistd.h>
 #include <math.h>
 #include <time.h>
+#include <pthread.h>
 
 #define DATA_SIZE 			2000000000		//8GB
 #define MEM_SIZE 			25000000		//100MB
-#define K 					(int)(DATA_SIZE / MEM_SIZE)
+#define THREAD_NUM			4 //Try to get optimized #. Maybe CPU#
+#define MEM_SIZE_SEGMENT	(int)(MEM_SIZE / THREAD_NUM)
+#define K_THREAD 			(int)(DATA_SIZE / MEM_SIZE)
+#define K					(K_THREAD * THREAD_NUM)
 #define S 					(int)floor(MEM_SIZE / (K + 1))
 #define OUTPUT 				(MEM_SIZE - S * K)
 #define NUM_S_STILL_FIT 	(int)floor((MEM_SIZE - (K + 1) * S) / S)
 #define LEFT_OVER 			(MEM_SIZE - (K + 1 + NUM_S_STILL_FIT) * S)
+#define RAN_LOWER			0
+#define RAN_UPPER			10
 
 typedef int data_t;
 
-data_t *M; 
+data_t *M;
 
-void *pThreadSortingPhase(int idx)
+void *pThread_Load(void *Pa);
+void *pThread_Sort(void *Pa);
+void *pThread_Save(void *Pa);
 
 int GenData();
 void Load(int idx);
@@ -28,7 +36,8 @@ void Save(int idx);
 void Store();
 int LinearScan();
 void KwayMerge();
-int test();
+int prin();
+int check(int pri);
 
 int isTmpLineEmptyHasLeftOver(int idx);
 int isMemLineEmpty(int idx);
@@ -38,16 +47,20 @@ int isTmpEmpty(int idx);
 int *T_Fill_idx_list = NULL;
 int *M_Lscan_idx_list = NULL;
 
+struct pArg{ 
+   int idx;
+   int mem_offset;
+};
+
+pthread_mutex_t Load_lock;
+pthread_mutex_t Save_lock;
 
 int main(){
-	remove("Data.dat");
-	remove("Data-tmp.dat");
-	remove("Data-sorted.dat");
+	remove("Data-3.dat");
+	remove("Data-tmp-3.dat");
+	remove("Data-sorted-3.dat");
 
-	// printf("%d\n", NUM_S_STILL_FIT);
-	// printf("%d\n", LEFT_OVER);
-
-	if (access("Data.dat", F_OK) != -1) {
+	if (access("Data-3.dat", F_OK) != -1) {
 	    printf("Data existed. Skip generating data.\n");
 	} 
 	else{
@@ -61,109 +74,125 @@ int main(){
 		}
 	}
 
-	if (access("Data-sorted.dat", F_OK) != -1)
-	    remove("Data-sorted.dat");
-	
+	if (access("Data-sorted-3.dat", F_OK) != -1)
+	    remove("Data-sorted-3.dat");
 
-	// D = (data_t *)malloc(DATA_SIZE * sizeof(data_t));
 	M = (data_t *)malloc(MEM_SIZE * sizeof(data_t));
-	//T = (data_t *)malloc(DATA_SIZE * sizeof(data_t));
 	T_Fill_idx_list = (int *)calloc(K, sizeof(int));
 	M_Lscan_idx_list = (int *)calloc(K, sizeof(int));
-
 	if (M == NULL || T_Fill_idx_list == NULL|| M_Lscan_idx_list == NULL){
 		printf("Allocating failure. Exiting.\n");
 		exit(EXIT_FAILURE);
 	}
 
-	// srand(4);
-	// for (int i = 0; i < DATA_SIZE; i++)
-	// 	M[i] = rand() % (9 - 0 + 1) + 0;
+	if (pthread_mutex_init(&Load_lock, NULL) != 0 || pthread_mutex_init(&Save_lock, NULL) != 0){ 
+        printf("\n mutex init has failed\n"); 
+        return 1; 
+    } 
 
-	// for (int i = 0; i < K; i++){
-	// 	for (int j = 0; j < MEM_SIZE; j++)
-	// 		printf("%d ", D[i * MEM_SIZE + j]);
-	// 	printf("\n");
-	// }
-	// printf("%s\n", "-----");
 	printf("Start sorting Phase...\n");
-	for (int i = 0; i < K; i++){
-		//printf("Loading\n");
-		Load(i);
-		// printf("Sorting\n");
-		Sort();
-		// for (int j = 0; j < MEM_SIZE; j++)
-		// 	printf("%d", M[j]);
-		// printf("\n");
-		// printf("Saving\n");
-		Save(i);
-		printf("%d/%d\n", i + 1, K);
+	pthread_t thread_id[THREAD_NUM];
+
+	struct pArg Pa[THREAD_NUM];
+
+	for (int i = 0; i < K_THREAD; i++){
+		for (int j = 0; j < THREAD_NUM; j++){
+			Pa[j].idx = THREAD_NUM * i + j;
+			Pa[j].mem_offset = MEM_SIZE_SEGMENT * j;
+		}
+
+		for (int j = 0; j < THREAD_NUM; j++)
+			pthread_create(&thread_id[j], NULL, pThread_Load, (void *)&Pa[j]);
+		
+		for (int j = 0; j < THREAD_NUM; j++){
+			pthread_join(thread_id[j], NULL);
+			pthread_create(&thread_id[j], NULL, pThread_Sort, (void *)&Pa[j]);
+		}
+
+		for (int j = 0; j < THREAD_NUM; j++){
+			pthread_join(thread_id[j], NULL);
+			pthread_create(&thread_id[j], NULL, pThread_Save, (void *)&Pa[j]);
+		}
+
+		for (int j = 0; j < THREAD_NUM; j++)
+			pthread_join(thread_id[j], NULL);
 	}
 
-	// for (int i = 0; i < MEM_SIZE; i++)
-	// 	M[i] = 1;
-
-	// for (int i = 0; i < K; i++){
-	// 	for (int j = 0; j < MEM_SIZE; j++)
-	// 		printf("%d ", T[i * MEM_SIZE + j]);
-	// 	printf("\n");
-	// }
-	 // printf("%s\n", "-----");
+	pthread_mutex_destroy(&Load_lock);
+	pthread_mutex_destroy(&Save_lock);
 
 	for (int i = 0; i < K; i++){
-		//printf("%d\n", i);
 		Fill(i);
-		// for (int j = 0; j < MEM_SIZE; j++)
-		// 	printf("%d", M[j]);
-		// printf("\n");
 	}
 
-
-	// printf("After 1st fill\n");
-	// for (int i = 0; i < K + 1; i++){
-	// 	for (int j = 0; j < S; j++)
-	// 		printf("%d", M[i * S + j]);
-	// 	printf("\n");
-	// }
-	// printf("%s\n", "-----");
-
-	// for (int i = 0; i < S; i++)
-	// 		M[MEM_SIZE - S + i] = LinearScan();
-	// Store();
-
-	// for (int j = 0; j < MEM_SIZE; j++)
-	// 	printf("%d ", M[j]);
-	// printf("%s\n", "-----");
 	printf("Start merging phase...\n");
 	KwayMerge();
 
-	// for (int i = 0; i < K; i++){
-	// 	for (int j = 0; j < MEM_SIZE; j++)
-	// 		printf("%d ", D[i * MEM_SIZE + j]);
-	// 	printf("\n");
-	// }
-
-	// free(D);
 	free(M);
-	//free(T);
-	remove("Data-tmp.dat");
-	//test();
+	remove("Data-tmp-3.dat");
 	return 0;
 }
 
-void *pThreadSortingPhase(int idx)
+void *pThread_Load(void *Pa)
 {
-	Load(i);
-	Sort();
-	Save(i);
+	const char filename[] = "Data-3.dat";
+    FILE *hs;
+    int idx = ((struct pArg *)Pa)->idx;
+    int mem_offset = ((struct pArg *)Pa)->mem_offset;
+
+    pthread_mutex_lock(&Load_lock);
+
+	hs = fopen(filename,"r");
+    if( hs == NULL)
+    {
+        fprintf(stderr,"Error reading from  %s\n",filename);
+        exit(EXIT_FAILURE);
+    }
+    fseek(hs, MEM_SIZE_SEGMENT * idx * 4, SEEK_SET);
+	int res = fread(M + mem_offset, sizeof(int), MEM_SIZE_SEGMENT, hs);
+	if (res != MEM_SIZE_SEGMENT){
+		fputs("pThread_LOAD().Reading error",stderr);
+		exit(EXIT_FAILURE);
+	}
+	fclose(hs);
+
+	pthread_mutex_unlock(&Load_lock);
+
+	pthread_exit(NULL);
+}
+void *pThread_Sort(void *Pa)
+{
+    int mem_offset = ((struct pArg *)Pa)->mem_offset;
+	heapSort(M + mem_offset, MEM_SIZE_SEGMENT);
+
+	pthread_exit(NULL);
+}
+void *pThread_Save(void *Pa)
+{
+	const char filename[] = "Data-tmp-3.dat";
+    int a;
+    FILE *hs;
+    int mem_offset = ((struct pArg *)Pa)->mem_offset;
+
+    pthread_mutex_lock(&Save_lock);
+
+    hs = fopen(filename,"a");
+    if( hs == NULL)
+    {
+        fprintf(stderr,"Error writing to %s\n",filename);
+        exit(EXIT_FAILURE);
+    }
+	fwrite(M + mem_offset, sizeof(int), MEM_SIZE_SEGMENT, hs);
+    fclose(hs);
+
+    pthread_mutex_unlock(&Save_lock);
+
+	pthread_exit(NULL);
 }
 
 void Load(int idx)
 {
-	// for(int i = 0; i < MEM_SIZE; i++)
-	// 	M[i] = D[MEM_SIZE * idx + i];
-
-	const char filename[] = "Data.dat";
+	const char filename[] = "Data-3.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
@@ -191,10 +220,8 @@ int Fill(int idx)
 		}
 		return 1;
 	}
-	// if (isTmpEmpty(idx))
-	// 	return 1;
-	
-	const char filename[] = "Data-tmp.dat";
+
+	const char filename[] = "Data-tmp-3.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
@@ -202,27 +229,23 @@ int Fill(int idx)
     {
         fprintf(stderr,"Error reading from  %s\n",filename);
         exit(EXIT_FAILURE);
-    }
+    }	
 
-    fseek(hs, (idx * MEM_SIZE + *(T_Fill_idx_list + idx) * S) * 4, SEEK_SET);
-    // for (int i = 0; i < K; i++)
-    // 	printf("%d", *(T_Fill_idx_list + i));
-    // printf("\n");
-    //printf("-%d %d %d %d\n", idx, idx * MEM_SIZE, *(T_Fill_idx_list + idx), idx * MEM_SIZE + *(T_Fill_idx_list + idx) * S);
+    fseek(hs, (idx * MEM_SIZE_SEGMENT + *(T_Fill_idx_list + idx) * S) * 4, SEEK_SET);
 	int res = fread(M + idx * S, sizeof(int), S, hs);
-	//printf("%d\n", res);
 	if (res != S){
 		fputs("Fill().Reading error",stderr);
 		exit(EXIT_FAILURE);
 	}
+	fclose(hs);
+
 	(*(T_Fill_idx_list + idx))++;
 	M_Lscan_idx_list[idx] = 0;
-	fclose(hs);
 	return 0;
 }
 int FillLeftOver(int idx)
 {
-	const char filename[] = "Data-tmp.dat";
+	const char filename[] = "Data-tmp-3.dat";
     FILE *hs;
 
 	hs = fopen(filename,"r");
@@ -231,17 +254,17 @@ int FillLeftOver(int idx)
         fprintf(stderr,"Error reading from  %s\n",filename);
         exit(EXIT_FAILURE);
     }
-    //printf("-> M[%d] %d\n", S*idx, idx * MEM_SIZE + *(T_Fill_idx_list + idx) * S);
-    fseek(hs, (idx * MEM_SIZE + *(T_Fill_idx_list + idx) * S) * 4, SEEK_SET);
-    
-    int res = fread(M + idx * S, sizeof(int), 1, hs);
-	if (res != 1){
+
+	fseek(hs, (idx * MEM_SIZE_SEGMENT + *(T_Fill_idx_list + idx) * S) * 4, SEEK_SET);
+    int res = fread(M + idx * S + S - LEFT_OVER, sizeof(int), LEFT_OVER, hs);
+	if (res != LEFT_OVER){
 		fputs("FillLeftOver().Reading error",stderr);
 		exit(EXIT_FAILURE);
 	}
+	fclose(hs);
+
 	(*(T_Fill_idx_list + idx))++;
 	M_Lscan_idx_list[idx] = S - 1 - LEFT_OVER;
-	fclose(hs);
 	return 0;
 }
 
@@ -253,42 +276,24 @@ void Sort()
 
 void Save(int idx)
 {
-	// for(int i = 0; i < MEM_SIZE; i++)
-	// 	T[MEM_SIZE * idx + i] = M[i];
-
-	const char filename[] = "Data-tmp.dat";
+	const char filename[] = "Data-tmp-3.dat";
     int a;
     FILE *hs;
 
-    //printf("Generating 8GB random data...\n");
     hs = fopen(filename,"a");
     if( hs == NULL)
     {
         fprintf(stderr,"Error writing to %s\n",filename);
         exit(EXIT_FAILURE);
     }
-    
-    // int *a = (int *)malloc() // => check if this way is faster
-
-    // for (int i = 0; i < 9; i++) //GB
-   	// 	for (int j = 0; j < 1000; j++) //MB
-   	// 		for (int k = 0; k < 1000; k++) //KB
-   	// 			for (int l = 0; l < 250; l++){ //4B
-    			// for (int l = 0; l < DATA_SIZE; l++){
-   					//a = rand() % (9 - 0 + 1) + 0;
-        			fwrite(M, sizeof(int), MEM_SIZE, hs);
-   				//}
+	fwrite(M, sizeof(int), MEM_SIZE, hs);
     fclose(hs);
 }
 
 int St_idx = 0;
 void Store()
 {
-	// for (int i = 0; i < S; i++)
-	// 	D[St_idx * S + i] = M[MEM_SIZE - S + i];
-	//St_idx++;
-
-	const char filename[] = "Data-sorted.dat";
+	const char filename[] = "Data-sorted-3.dat";
     int a;
     FILE *hs;
 
@@ -298,18 +303,15 @@ void Store()
         fprintf(stderr,"Error writing to %s\n",filename);
         exit(EXIT_FAILURE);
     }
-    //fseek(hs, (St_idx * S) * 4, SEEK_SET);
 	fwrite(M + MEM_SIZE - OUTPUT, sizeof(int), OUTPUT, hs);
     fclose(hs);
+
     St_idx++;
 }
 
 int LinearScan()
 {
 	int i = 0;
-	// for (int j = 0; j < K; j++)
-	// 	printf("%d", *(M_Lscan_idx_list + j));
-	// printf("\n");
 	while (isMemLineEmpty(i) && !isTmpEmpty(i))
 		if(Fill(i))
 			i++;
@@ -332,25 +334,23 @@ int LinearScan()
 
 void KwayMerge()
 {
-	int N = (int)DATA_SIZE / OUTPUT;
+	
+	int N = (int)floor(DATA_SIZE / OUTPUT);
 	int n = N;
 	int i = 0;
 	int j = 1;
+	int left_over = DATA_SIZE - N * OUTPUT;
+
 	while (n-- > 0){
 		for (int i = 0; i < OUTPUT; i++)
 			M[MEM_SIZE - OUTPUT + i] = LinearScan();
-		// printf("\n");
-		// for (int i = 0; i < K + 1; i++){
-		// 	for (int j = 0; j < S; j++)
-		// 		printf("%d ", M[i * S + j]);
-		// }
-		// for (int j = 0; j < MEM_SIZE; j++)
-		// 	printf("%d ", M[j]);
-		// printf("\n");
 		Store();
 		if ((int)((i++ + 1) % (N / 10)) == 0)
 			printf("%d%s\n", j++ * 10, "%");
 	}
+	for (int i = 0; i < left_over; i++)
+		M[MEM_SIZE - OUTPUT + i] = LinearScan();
+	Store();
 }
 
 int isMemLineEmpty(int idx)
@@ -378,8 +378,6 @@ int isTmpLineEmpty(int idx)
 		return 0;
 }
 
-
-
 int isTmpEmpty(int idx){
 	if (idx == K)
 		return 1;
@@ -389,7 +387,7 @@ int isTmpEmpty(int idx){
 
 int GenData()
 {
-	const char filename[] = "Data.dat";
+	const char filename[] = "Data-3.dat";
     int a;
     FILE *hs;
 
@@ -400,35 +398,21 @@ int GenData()
         fprintf(stderr,"Error writing to %s\n",filename);
         return(1);
     }
-    
-    // int *a = (int *)malloc() // => check if this way is faster
-
-    // for (int i = 0; i < 9; i++) //GB
-   	// 	for (int j = 0; j < 1000; j++) //MB
-   	// 		for (int k = 0; k < 1000; k++) //KB
-   	// 			for (int l = 0; l < 250; l++){ //4B
-    			for (int l = 0; l < DATA_SIZE; l++){
-   					a = rand() % (9 - 1 + 1) + 1;
-        			fwrite(&a, sizeof(int), 1, hs);
-   				}
+	for (int l = 0; l < DATA_SIZE; l++){
+			a = rand() % (RAN_UPPER - RAN_LOWER + 1) + RAN_LOWER;
+		fwrite(&a, sizeof(int), 1, hs);
+	}
     fclose(hs);
-    // hs = fopen(filename,"r");
-    // if( hs == NULL)
-    // {
-    //     fprintf(stderr,"Error reading from  %s\n",filename);
-    //     return(1);
-    // }
-
-    // for (int i = 0; i < 10; i++){
-    //     fread(&score, sizeof(int), 1, hs);
-    //     printf("Reading high score: %d\n",score);
-    // }
-    // fclose(hs);
+    
     return 0;
 }
 
-int test(){
-	const char filename[] = "Data-sorted.dat";
+int prin()
+{
+	int D[RAN_UPPER - RAN_LOWER + 1];
+	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		D[j] = 0;
+	const char filename[] = "Data-3.dat";
     int a;
     FILE *hs;
     hs = fopen(filename,"r");
@@ -440,8 +424,60 @@ int test(){
 
     for (int i = 0; i < DATA_SIZE; i++){
         fread(&a, sizeof(int), 1, hs);
-        printf("%d",a);
+        for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        	if (a == j + RAN_LOWER){
+    			D[j]++;
+    			break;
+    		}
     }
+    for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++){
+		printf("%d - %d\n", j, D[j]);
+    }
+
+    fclose(hs);
+    return 0;
+}
+
+int check(int pri)
+{
+	int D[RAN_UPPER - RAN_LOWER + 1];
+	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		D[j] = 0;
+	const char filename[] = "Data-sorted-3.dat";
+    int a;
+    FILE *hs;
+    hs = fopen(filename,"r");
+    if( hs == NULL)
+    {
+        fprintf(stderr,"Error reading from  %s\n",filename);
+        return(1);
+    }
+
+    if (pri == 1){
+    	for (int i = 0; i < DATA_SIZE; i++){
+        	fread(&a, sizeof(int), 1, hs);
+        	printf("%d ",a);
+        	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        		if (a == j + RAN_LOWER){
+        			D[j]++;
+        			break;
+        		}
+    	}
+    }
+    else{
+    	for (int i = 0; i < DATA_SIZE; i++){
+        	fread(&a, sizeof(int), 1, hs);
+       	for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+        		if (a == j + RAN_LOWER){
+        			D[j]++;
+        			break;
+        		}
+    	}
+    }
+    
+    printf("\n");
+    for (int j = 0; j < RAN_UPPER - RAN_LOWER + 1; j++)
+		printf("%d - %d\n", j, D[j]);
 
     fclose(hs);
     return 0;
